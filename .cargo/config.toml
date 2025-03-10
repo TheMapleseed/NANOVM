@@ -1,0 +1,60 @@
+[build]
+# Use all available CPUs for parallel compilation
+jobs = 0
+
+# Reproducible builds for enterprise deployments
+rustflags = [
+    "-C", "debuginfo=0",
+    "-C", "codegen-units=1",
+    "-D", "warnings",               # Treat warnings as errors for production code
+    "-W", "missing-docs",           # Warn about missing documentation
+    "-W", "rust-2018-idioms",       # Use modern Rust idioms
+    "-D", "clippy::correctness",    # Prevent correctness issues
+    "-D", "clippy::suspicious",     # Prevent suspicious patterns
+    "-D", "clippy::complexity",     # Prevent overly complex code
+    "-D", "clippy::perf",           # Prevent performance issues
+]
+
+# Set global env vars for consistent builds
+[env]
+RUSTFLAGS = "-C target-cpu=native"
+RUSTDOCFLAGS = "--enable-index-page --show-type-layout"
+
+# Configuration for release builds
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true
+debug = false
+
+# Configuration for production builds
+[profile.production]
+inherits = "release"
+overflow-checks = true
+codegen-units = 1
+rpath = false
+debug-assertions = false
+
+# Target-specific settings
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
+linker = "x86_64-linux-musl-gcc"
+
+[target.aarch64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
+linker = "aarch64-linux-musl-gcc"
+
+# Use faster linker
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[alias]
+# Useful aliases for development and deployment
+security-audit = "audit"
+production-build = "build --profile production --release --features enterprise"
+lint = "clippy -- -D warnings"
+test-all = "test --all-features --all-targets"
+docs = "doc --no-deps --all-features" 

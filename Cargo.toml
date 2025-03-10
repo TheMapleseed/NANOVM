@@ -3,12 +3,14 @@ name = "nanovm"
 version = "0.1.0"
 edition = "2021"
 authors = ["TheMapleseed"]
-description = "Enterprise-grade rootless virtualization system"
+description = "Enterprise-grade rootless virtualization system with mTLS 1.2+ support"
 license = "GPL-3.0"
 repository = "https://github.com/TheMapleseed/NANOVM"
 readme = "README.md"
 keywords = ["virtualization", "security", "isolation", "container", "vm"]
-categories = ["virtualization", "command-line-utilities"]
+categories = ["virtualization", "command-line-utilities", "security"]
+# Minimum Rust version for security reasons
+rust-version = "1.70.0"
 
 [dependencies]
 # Core dependencies
@@ -23,25 +25,43 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.3", features = ["v4", "serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+metrics = "0.20"
+metrics-exporter-prometheus = "0.11"
+once_cell = "1.17"
 
 # Network dependencies
 tokio-rustls = "0.24"
 rustls = { version = "0.21", features = ["dangerous_configuration"] }
 rustls-pemfile = "1.0"
+webpki-roots = "0.23"     # TLS certificate verification
 url = "2.4"
 http = "0.2"
 httparse = "1.8"
+hyper = { version = "0.14", features = ["full"] }
 
 # Security dependencies
 hmac = "0.12"
 sha2 = "0.10"
 argon2 = "0.5"
 rand = "0.8"
+base64 = "0.21"
+zeroize = "1.6"           # Secure memory wiping
+secrecy = "0.8"           # Handling sensitive data
+ring = "0.16"             # Cryptographic primitives
+orion = "0.17"            # High-level crypto
 
 # Config dependencies
 structopt = "0.3"
 config = "0.13"
 jsonschema = "0.17"
+hostname = "0.3"          # For hostname resolution
+nix = "0.26"              # Linux APIs (namespaces, etc.)
+libc = "0.2"              # C bindings
+caps = "0.5"              # Linux capabilities
+
+[target.'cfg(target_os = "linux")'.dependencies]
+seccomp-sys = "0.2"       # Seccomp filtering
+cgroups-rs = "0.3"        # Resource limitations
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -49,13 +69,24 @@ tempfile = "3.5"
 criterion = "0.5"
 mockall = "0.11"
 test-log = "0.2"
+proptest = "1.1"          # Property-based testing
+fake = "2.5"              # Test data generation
+wiremock = "0.5"          # HTTP mocking
 
 [features]
-default = []
-enterprise = ["metrics", "tracing", "advanced-security"]
+default = ["tls"]
+enterprise = ["metrics", "tracing", "advanced-security", "ha", "mtls"]
 metrics = []
 tracing = []
-advanced-security = []
+advanced-security = ["seccomp", "cgroups", "wx-strict", "data-guard"]
+seccomp = []
+cgroups = []
+wx-strict = []
+data-guard = []
+ha = ["clustering"]       # High availability
+clustering = []
+tls = []
+mtls = ["tls"]           # Mutual TLS
 
 [[bin]]
 name = "nanovm"
@@ -72,6 +103,15 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[profile.production]
+inherits = "release"
+debug = false
+strip = true
+lto = true
+codegen-units = 1
+opt-level = 3
+overflow-checks = true    # Prevent integer overflows
 
 [profile.dev]
 opt-level = 0
