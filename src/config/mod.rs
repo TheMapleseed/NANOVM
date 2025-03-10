@@ -193,19 +193,17 @@ pub struct TlsConfig {
     
     /// Whether to require client certificate verification
     pub require_client_cert: bool,
+    
+    /// Whether to enable OCSP stapling for certificate revocation checking
+    pub enable_ocsp_stapling: bool,
+    
+    /// Path to OCSP response file (if pre-generated)
+    pub ocsp_response_path: Option<String>,
 }
 
 /// TLS version
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TlsVersion {
-    /// TLS 1.0 (not recommended)
-    #[serde(rename = "1.0")]
-    V1_0,
-    
-    /// TLS 1.1 (not recommended)
-    #[serde(rename = "1.1")]
-    V1_1,
-    
     /// TLS 1.2
     #[serde(rename = "1.2")]
     V1_2,
@@ -215,17 +213,9 @@ pub enum TlsVersion {
     V1_3,
 }
 
-impl Default for TlsConfig {
+impl Default for TlsVersion {
     fn default() -> Self {
-        Self {
-            enabled: false,
-            cert_path: None,
-            key_path: None,
-            min_version: TlsVersion::V1_2, // Ensure TLS 1.2 is the minimum by default
-            enable_mtls: false,
-            client_ca_path: None,
-            require_client_cert: false,
-        }
+        TlsVersion::V1_3
     }
 }
 
@@ -648,12 +638,14 @@ impl ConfigManager {
                 },
                 tls: TlsConfig {
                     enabled: true,
-                    cert_path: None,
-                    key_path: None,
+                    cert_path: Some("/etc/nanovm/certs/server.crt".to_string()),
+                    key_path: Some("/etc/nanovm/certs/server.key".to_string()),
                     min_version: TlsVersion::V1_3,
-                    enable_mtls: false,
-                    client_ca_path: None,
-                    require_client_cert: false,
+                    enable_mtls: true,
+                    client_ca_path: Some("/etc/nanovm/certs/client-ca.crt".to_string()),
+                    require_client_cert: true,
+                    enable_ocsp_stapling: true,
+                    ocsp_response_path: Some("/etc/nanovm/certs/ocsp.der".to_string()),
                 },
             },
             scaling: ScalingConfig {

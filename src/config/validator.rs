@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::fs;
 use crate::config::{ConfigError, VmConfig, TlsVersion, NetworkConfig, SecurityConfig};
 
 /// Configuration validator
@@ -94,13 +95,39 @@ impl ConfigValidator {
         Ok(())
     }
     
+    /// Safely canonicalizes a path and checks for path traversal attempts
+    fn validate_path(&self, path: &str) -> Result<PathBuf, ConfigError> {
+        // Check for common path traversal patterns
+        if path.contains("..") || path.contains("//") || path.contains("\\\\") {
+            return Err(ConfigError::ValidationError(
+                format!("Potential path traversal attack detected in path: {}", path)
+            ));
+        }
+        
+        // Attempt to canonicalize the path
+        let canonical_path = fs::canonicalize(path).map_err(|e| {
+            ConfigError::ValidationError(
+                format!("Invalid path {}: {}", path, e)
+            )
+        })?;
+        
+        // Check if the path exists
+        if !canonical_path.exists() {
+            return Err(ConfigError::ValidationError(
+                format!("Path does not exist: {}", path)
+            ));
+        }
+        
+        Ok(canonical_path)
+    }
+    
     /// Validates network configuration
     fn validate_network(&self, network: &NetworkConfig) -> Result<(), ConfigError> {
-        // Validate URLs
+        // Validate URLs - require HTTPS only
         for url in &network.urls {
-            if !url.starts_with("http://") && !url.starts_with("https://") {
+            if !url.starts_with("https://") {
                 return Err(ConfigError::ValidationError(
-                    format!("Invalid URL: {}. URLs must start with http:// or https://", url),
+                    format!("Invalid URL: {}. Only HTTPS URLs are allowed for security.", url)
                 ));
             }
         }
@@ -108,7 +135,14 @@ impl ConfigValidator {
         // Validate network interface configuration
         if network.interface.max_connections == 0 {
             return Err(ConfigError::ValidationError(
-                "Maximum connections cannot be zero".to_string(),
+                "Maximum connections cannot be zero".to_string()
+            ));
+        }
+        
+        // TLS must be enabled
+        if !network.tls.enabled {
+            return Err(ConfigError::ValidationError(
+                "TLS must be enabled for secure operation.".to_string()
             ));
         }
         
@@ -117,42 +151,31 @@ impl ConfigValidator {
             // Check for certificate and key paths
             if network.tls.cert_path.is_none() {
                 return Err(ConfigError::ValidationError(
-                    "Certificate path is required when TLS is enabled".to_string(),
+                    "Certificate path is required when TLS is enabled".to_string()
                 ));
             }
             
             if network.tls.key_path.is_none() {
                 return Err(ConfigError::ValidationError(
-                    "Private key path is required when TLS is enabled".to_string(),
+                    "Private key path is required when TLS is enabled".to_string()
                 ));
             }
             
-            // Verify certificate file exists
+            // Verify certificate file exists and is safe
             if let Some(cert_path) = &network.tls.cert_path {
-                if !Path::new(cert_path).exists() {
-                    return Err(ConfigError::ValidationError(
-                        format!("Certificate file not found: {}", cert_path),
-                    ));
-                }
+                self.validate_path(cert_path)?;
             }
             
-            // Verify key file exists
+            // Verify key file exists and is safe
             if let Some(key_path) = &network.tls.key_path {
-                if !Path::new(key_path).exists() {
-                    return Err(ConfigError::ValidationError(
-                        format!("Private key file not found: {}", key_path),
-                    ));
-                }
+                self.validate_path(key_path)?;
             }
             
-            // Enforce minimum TLS version 1.2
-            match network.tls.min_version {
-                TlsVersion::V1_0 | TlsVersion::V1_1 => {
-                    return Err(ConfigError::ValidationError(
-                        "TLS version must be at least 1.2 for security reasons".to_string(),
-                    ));
-                }
-                _ => { /* TLS 1.2 or 1.3 is acceptable */ }
+            // For enterprise security, mTLS should be enabled
+            if !network.tls.enable_mtls {
+                return Err(ConfigError::ValidationError(
+                    "mTLS must be enabled for enterprise-grade security".to_string()
+                ));
             }
             
             // Validate mTLS configuration
@@ -160,18 +183,21 @@ impl ConfigValidator {
                 // Client CA path is required for mTLS
                 if network.tls.client_ca_path.is_none() {
                     return Err(ConfigError::ValidationError(
-                        "Client CA certificate path is required when mTLS is enabled".to_string(),
+                        "Client CA certificate path is required when mTLS is enabled".to_string()
                     ));
                 }
                 
-                // Verify client CA file exists
+                // Verify client CA file exists and is safe
                 if let Some(ca_path) = &network.tls.client_ca_path {
-                    if !Path::new(ca_path).exists() {
-                        return Err(ConfigError::ValidationError(
-                            format!("Client CA certificate file not found: {}", ca_path),
-                        ));
-                    }
+                    self.validate_path(ca_path)?;
                 }
+            }
+            
+            // OCSP stapling should be enabled for enhanced security
+            if !network.tls.enable_ocsp_stapling {
+                return Err(ConfigError::ValidationError(
+                    "OCSP stapling should be enabled for certificate revocation checking".to_string()
+                ));
             }
         }
         

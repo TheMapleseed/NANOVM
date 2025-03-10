@@ -149,7 +149,7 @@ pub fn get_vm_config_schema() -> Value {
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "pattern": "^https?://.+"
+                            "pattern": "^https://.+"
                         }
                     },
                     "interface": {
@@ -192,7 +192,7 @@ pub fn get_vm_config_schema() -> Value {
                             },
                             "min_version": {
                                 "type": "string",
-                                "enum": ["1.0", "1.1", "1.2", "1.3"]
+                                "enum": ["1.2", "1.3"]
                             },
                             "enable_mtls": {
                                 "type": "boolean"
@@ -202,6 +202,12 @@ pub fn get_vm_config_schema() -> Value {
                             },
                             "require_client_cert": {
                                 "type": "boolean"
+                            },
+                            "enable_ocsp_stapling": {
+                                "type": "boolean"
+                            },
+                            "ocsp_response_path": {
+                                "type": ["string", "null"]
                             }
                         }
                     }

@@ -1,7 +1,7 @@
 // src/security/wx_enforcer.rs
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, PoisonError};
 use thiserror::Error;
 
 /// Memory protection mode
@@ -44,7 +44,10 @@ impl WxEnforcer {
     ) -> Result<(), WxError> {
         // Check for overlapping regions
         {
-            let regions = self.memory_regions.read().unwrap();
+            let regions = self.memory_regions.read().map_err(|e| {
+                WxError::LockError(format!("Failed to acquire read lock: {}", e))
+            })?;
+            
             for (&addr, &(region_size, _)) in regions.iter() {
                 // Check for overlap
                 if (address >= addr && address < addr + region_size) ||
@@ -55,16 +58,25 @@ impl WxEnforcer {
         }
         
         // Register the region
-        let mut regions = self.memory_regions.write().unwrap();
+        let mut regions = self.memory_regions.write().map_err(|e| {
+            WxError::LockError(format!("Failed to acquire write lock: {}", e))
+        })?;
+        
         regions.insert(address, (size, protection));
         
         // Log the operation
-        if let Ok(mut log) = self.audit_log.write() {
-            log.push((
-                address,
-                format!("register_region(size={}, protection={:?})", size, protection),
-                chrono::Utc::now(),
-            ));
+        match self.audit_log.write() {
+            Ok(mut log) => {
+                log.push((
+                    address,
+                    format!("register_region(size={}, protection={:?})", size, protection),
+                    chrono::Utc::now(),
+                ));
+            },
+            Err(e) => {
+                // Just log the error but don't fail the operation
+                tracing::warn!("Failed to log memory operation: {}", e);
+            }
         }
         
         Ok(())
@@ -77,18 +89,27 @@ impl WxEnforcer {
         protection: MemoryProtection,
     ) -> Result<(), WxError> {
         // Find the region
-        let mut regions = self.memory_regions.write().unwrap();
-        if let Some((size, old_protection)) = regions.get_mut(&address) {
+        let mut regions = self.memory_regions.write().map_err(|e| {
+            WxError::LockError(format!("Failed to acquire write lock: {}", e))
+        })?;
+        
+        if let Some((_, old_protection)) = regions.get_mut(&address) {
             // Update protection
             *old_protection = protection;
             
             // Log the operation
-            if let Ok(mut log) = self.audit_log.write() {
-                log.push((
-                    address,
-                    format!("change_protection(protection={:?})", protection),
-                    chrono::Utc::now(),
-                ));
+            match self.audit_log.write() {
+                Ok(mut log) => {
+                    log.push((
+                        address,
+                        format!("change_protection(protection={:?})", protection),
+                        chrono::Utc::now(),
+                    ));
+                },
+                Err(e) => {
+                    // Just log the error but don't fail the operation
+                    tracing::warn!("Failed to log memory operation: {}", e);
+                }
             }
             
             Ok(())
@@ -105,7 +126,10 @@ impl WxEnforcer {
         is_execute: bool,
     ) -> Result<(), WxError> {
         // Find the region containing this address
-        let regions = self.memory_regions.read().unwrap();
+        let regions = self.memory_regions.read().map_err(|e| {
+            WxError::LockError(format!("Failed to acquire read lock: {}", e))
+        })?;
+        
         for (&region_addr, &(region_size, protection)) in regions.iter() {
             if address >= region_addr && address < region_addr + region_size {
                 // Check operation against protection
@@ -154,4 +178,7 @@ pub enum WxError {
     
     #[error("Overlapping memory region")]
     OverlappingRegion,
+    
+    #[error("Lock error: {0}")]
+    LockError(String),
 }

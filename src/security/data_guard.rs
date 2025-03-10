@@ -316,7 +316,9 @@ impl DataGuard {
         path: &str,
         write_access: bool
     ) -> Result<(), DataGuardError> {
-        let config = self.config.read().unwrap();
+        let config = self.config.read().map_err(|e| {
+            DataGuardError::Internal(format!("Failed to acquire config lock: {}", e))
+        })?;
         
         // Check if filesystem access is allowed at all
         if !config.filesystem.allow_filesystem {
@@ -342,15 +344,33 @@ impl DataGuard {
             return Err(DataGuardError::FilesystemWriteDisabled);
         }
         
+        // Check for path traversal attempts
+        if path.contains("..") {
+            self.log_security_event(
+                SecurityEventSeverity::Critical,
+                "path_traversal_attempt",
+                &format!("Potential path traversal attack detected: {}", path),
+                None,
+            ).await;
+            
+            return Err(DataGuardError::PathTraversalAttempt(path.to_string()));
+        }
+        
+        // Canonicalize path if possible
+        let canonical_path = match std::fs::canonicalize(path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => path.to_string(), // Use original path if canonicalization fails
+        };
+        
         // Check if the path is in the whitelist
         let path_allowed = config.filesystem.allowed_paths.iter().any(|allowed_path| {
             // Check if the path is directly allowed
-            if path == allowed_path {
+            if canonical_path == *allowed_path {
                 return true;
             }
             
             // Check if the path is a subdirectory of an allowed path
-            if allowed_path.ends_with('/') && path.starts_with(allowed_path) {
+            if allowed_path.ends_with('/') && canonical_path.starts_with(allowed_path) {
                 return true;
             }
             
@@ -361,11 +381,11 @@ impl DataGuard {
             self.log_security_event(
                 SecurityEventSeverity::Warning,
                 "filesystem_access_violation",
-                &format!("Access attempt to non-whitelisted path: {}", path),
+                &format!("Access attempt to non-whitelisted path: {}", canonical_path),
                 None,
             ).await;
             
-            return Err(DataGuardError::PathNotWhitelisted(path.to_string()));
+            return Err(DataGuardError::PathNotWhitelisted(canonical_path));
         }
         
         // Log successful validation
@@ -373,7 +393,7 @@ impl DataGuard {
             self.log_security_event(
                 SecurityEventSeverity::Info,
                 "filesystem_access_allowed",
-                &format!("Access to {} allowed (write={})", path, write_access),
+                &format!("Access to {} allowed (write={})", canonical_path, write_access),
                 None,
             ).await;
         }
@@ -469,7 +489,9 @@ impl DataGuard {
     
     /// Validates an API key for a specific operation
     pub async fn validate_api_key(&self, key_name: &str, operation: &str) -> Result<(), DataGuardError> {
-        let api_keys = self.api_keys.read().unwrap();
+        let api_keys = self.api_keys.read().map_err(|e| {
+            DataGuardError::Internal(format!("Failed to acquire API keys lock: {}", e))
+        })?;
         
         let key_config = api_keys.get(key_name)
             .ok_or_else(|| DataGuardError::ApiKeyNotFound(key_name.to_string()))?;
@@ -699,4 +721,7 @@ pub enum DataGuardError {
     
     #[error("Internal error: {0}")]
     Internal(String),
+    
+    #[error("Path traversal attempt: {0}")]
+    PathTraversalAttempt(String),
 }
