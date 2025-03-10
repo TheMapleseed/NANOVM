@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use thiserror::Error;
 
 use crate::config::SandboxConfig;
 use crate::security::data_guard::DataGuard;
@@ -540,7 +541,7 @@ pub struct ExecuteResult {
 }
 
 /// Error during sandbox operations
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum SandboxError {
     #[error("Invalid working directory: {0}")]
     InvalidWorkingDir(PathBuf),

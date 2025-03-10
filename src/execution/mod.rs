@@ -7,6 +7,7 @@ use std::task::{Context, Poll};
 use tokio::sync::{mpsc, oneshot, Semaphore};
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
+use thiserror::Error;
 
 use crate::config::ResourceConfig;
 use crate::security::wx_enforcer::WxEnforcer;
@@ -834,7 +835,7 @@ impl ExecutionEngine {
 }
 
 /// Error during execution engine construction
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum EngineBuildError {
     #[error("Failed to create runtime: {0}")]
     RuntimeCreationFailed(String),
@@ -847,7 +848,7 @@ pub enum EngineBuildError {
 }
 
 /// Error during task submission
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum SubmitError {
     #[error("Task channel closed")]
     TaskChannelClosed,
@@ -863,7 +864,7 @@ pub enum SubmitError {
 }
 
 /// Error during task cancellation
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum CancelError {
     #[error("Context not found")]
     ContextNotFound,
@@ -876,7 +877,7 @@ pub enum CancelError {
 }
 
 /// Error during resource management
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum ResourceError {
     #[error("Context not found")]
     ContextNotFound,

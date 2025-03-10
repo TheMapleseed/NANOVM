@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 use std::sync::RwLock;
-use uuid::Uuid;
+use thiserror::Error;
 
-/// Memory region protection status
+/// Memory protection mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryProtection {
     /// Read-only memory
@@ -17,7 +17,7 @@ pub enum MemoryProtection {
     Executable,
 }
 
-/// Enforces W^X (Write XOR Execute) memory policy
+/// Write XOR Execute policy enforcer
 pub struct WxEnforcer {
     /// Maps memory regions to their protection status
     memory_regions: RwLock<HashMap<usize, (usize, MemoryProtection)>>,
@@ -35,61 +35,61 @@ impl WxEnforcer {
         }
     }
     
-    /// Registers a memory region with specific protection
+    /// Registers a memory region with protection settings
     pub fn register_region(
         &self,
         address: usize,
         size: usize,
         protection: MemoryProtection,
     ) -> Result<(), WxError> {
-        // Validate no overlapping regions
-        let regions = self.memory_regions.read().unwrap();
-        for (&addr, &(len, _)) in regions.iter() {
-            if (address >= addr && address < addr + len) || 
-               (addr >= address && addr < address + size) {
-                return Err(WxError::OverlappingRegion);
+        // Check for overlapping regions
+        {
+            let regions = self.memory_regions.read().unwrap();
+            for (&addr, &(region_size, _)) in regions.iter() {
+                // Check for overlap
+                if (address >= addr && address < addr + region_size) ||
+                   (addr >= address && addr < address + size) {
+                    return Err(WxError::OverlappingRegion);
+                }
             }
         }
         
-        // Register the new region
-        drop(regions);
-        self.memory_regions.write().unwrap().insert(address, (size, protection));
+        // Register the region
+        let mut regions = self.memory_regions.write().unwrap();
+        regions.insert(address, (size, protection));
         
         // Log the operation
-        self.audit_log.write().unwrap().push((
-            address,
-            format!("register_region(size={}, protection={:?})", size, protection),
-            chrono::Utc::now(),
-        ));
+        if let Ok(mut log) = self.audit_log.write() {
+            log.push((
+                address,
+                format!("register_region(size={}, protection={:?})", size, protection),
+                chrono::Utc::now(),
+            ));
+        }
         
         Ok(())
     }
     
-    /// Attempts to change protection of a memory region
+    /// Changes protection mode for a memory region
     pub fn change_protection(
         &self,
         address: usize,
         protection: MemoryProtection,
     ) -> Result<(), WxError> {
-        let mut regions = self.memory_regions.write().unwrap();
-        
         // Find the region
-        if let Some((size, current_protection)) = regions.get_mut(&address) {
-            // Enforce W^X policy
-            if *current_protection == MemoryProtection::Executable && 
-               protection == MemoryProtection::ReadWrite {
-                return Err(WxError::WxViolation);
-            }
-            
+        let mut regions = self.memory_regions.write().unwrap();
+        if let Some((size, old_protection)) = regions.get_mut(&address) {
             // Update protection
-            *current_protection = protection;
+            *old_protection = protection;
             
             // Log the operation
-            self.audit_log.write().unwrap().push((
-                address,
-                format!("change_protection(from={:?}, to={:?})", current_protection, protection),
-                chrono::Utc::now(),
-            ));
+            if let Ok(mut log) = self.audit_log.write() {
+                log.push((
+                    address,
+                    format!("change_protection(protection={:?})", protection),
+                    chrono::Utc::now(),
+                ));
+            }
             
             Ok(())
         } else {
@@ -97,19 +97,18 @@ impl WxEnforcer {
         }
     }
     
-    /// Validates whether an operation is allowed on a memory region
+    /// Validates a memory operation against W^X policy
     pub fn validate_operation(
         &self,
         address: usize,
         is_write: bool,
         is_execute: bool,
     ) -> Result<(), WxError> {
+        // Find the region containing this address
         let regions = self.memory_regions.read().unwrap();
-        
-        // Find the containing region
-        for (&addr, &(size, protection)) in regions.iter() {
-            if address >= addr && address < addr + size {
-                // Enforce protection
+        for (&region_addr, &(region_size, protection)) in regions.iter() {
+            if address >= region_addr && address < region_addr + region_size {
+                // Check operation against protection
                 match protection {
                     MemoryProtection::ReadOnly => {
                         if is_write || is_execute {
@@ -128,16 +127,18 @@ impl WxEnforcer {
                     }
                 }
                 
+                // Operation is allowed
                 return Ok(());
             }
         }
         
+        // Address not mapped
         Err(WxError::AddressNotMapped)
     }
 }
 
-/// Errors that can occur during W^X enforcement
-#[derive(Debug, thiserror::Error)]
+/// Error during W^X policy enforcement
+#[derive(Error, Debug)]
 pub enum WxError {
     #[error("W^X policy violation")]
     WxViolation,

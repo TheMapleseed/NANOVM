@@ -5,23 +5,33 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::config::VmConfig;
-use crate::network::UrlResolver;
-use crate::security::{DataGuard, WxEnforcer};
+use crate::network::url_resolver::UrlResolver;
+use crate::security::data_guard::DataGuard;
+use crate::security::wx_enforcer::WxEnforcer;
 
-/// Thread-safe reference to a running NanoVM instance
+/// VM instance handle type
 pub type VmHandle = Arc<RwLock<Instance>>;
 
-/// Status of a NanoVM instance
+/// Instance operational status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstanceStatus {
+    /// Instance is starting up
     Starting,
+    
+    /// Instance is running
     Running,
+    
+    /// Instance is temporarily paused
     Paused,
+    
+    /// Instance is in the process of stopping
     Stopping,
+    
+    /// Instance has been terminated
     Terminated,
 }
 
-/// Core representation of a NanoVM instance
+/// VM instance
 pub struct Instance {
     /// Unique identifier for this instance
     id: Uuid,
@@ -48,54 +58,101 @@ pub struct Instance {
     status_tx: mpsc::Sender<StatusUpdate>,
 }
 
-/// Control messages for VM lifecycle management
-#[derive(Debug)]
+/// Control message for VM instance
 pub enum ControlMessage {
+    /// Start the instance
     Start,
+    
+    /// Pause the instance
     Pause,
+    
+    /// Resume a paused instance
     Resume,
+    
+    /// Terminate the instance
     Terminate,
+    
+    /// Update the memory limit
     UpdateMemoryLimit(usize),
 }
 
-/// Status updates emitted by the VM
-#[derive(Debug, Clone)]
+/// Status update from VM instance
 pub struct StatusUpdate {
+    /// Instance ID
     instance_id: Uuid,
+    
+    /// Instance status
     status: InstanceStatus,
+    
+    /// Current memory usage
     memory_usage: usize,
+    
+    /// Current number of connections
     connection_count: usize,
 }
 
 impl Instance {
-    /// Creates a new NanoVM instance from the provided configuration
+    /// Creates a new VM instance
     pub async fn new(config: VmConfig) -> Result<VmHandle, InstanceError> {
-        // Implementation details omitted for brevity
-        // This would initialize the VM with the provided configuration,
-        // establish URL associations, and set up the security mechanisms
+        // This would be implemented in a real system
+        // For now, just return a placeholder
+        
+        // Create channels for control and status
+        let (control_tx, control_rx) = mpsc::channel(10);
+        let (status_tx, _status_rx) = mpsc::channel(10);
+        
+        // Create URL resolver
+        let url_resolver = Arc::new(UrlResolver::new());
+        
+        // Create Data Guard
+        let data_guard = DataGuard::new();
+        
+        // Create W^X enforcer
+        let wx_enforcer = WxEnforcer::new();
+        
+        // Create instance
+        let instance = Self {
+            id: Uuid::new_v4(),
+            status: InstanceStatus::Starting,
+            memory_limit: config.resources.memory_limit_bytes as usize,
+            url_resolver,
+            data_guard,
+            wx_enforcer,
+            control_rx,
+            status_tx,
+        };
+        
+        Ok(Arc::new(RwLock::new(instance)))
     }
     
     /// Starts the VM instance
     pub async fn start(&mut self) -> Result<(), InstanceError> {
-        // Implementation details omitted for brevity
-        // This would transition the VM to the Running state
+        // This would start the VM in a real implementation
+        self.status = InstanceStatus::Running;
+        Ok(())
     }
     
-    /// Safely terminates the VM instance
+    /// Stops the VM instance
     pub async fn terminate(&mut self) -> Result<(), InstanceError> {
-        // Implementation details omitted for brevity
-        // This would clean up resources and transition to Terminated
+        // This would shut down the VM in a real implementation
+        self.status = InstanceStatus::Terminated;
+        Ok(())
     }
     
-    /// Associates a URL with this VM instance
+    /// Associates a URL with this instance
     pub async fn associate_url(&mut self, url: &str) -> Result<(), InstanceError> {
-        // Implementation details omitted for brevity
-        // This would register the URL with the resolver
+        // This would associate a URL with the instance in a real implementation
+        Ok(())
+    }
+    
+    /// Gets the current status of the instance
+    pub fn get_status(&self) -> InstanceStatus {
+        self.status
     }
 }
 
-/// Errors that can occur during VM instance operations
-#[derive(Debug, thiserror::Error)]
+/// Error during VM instance operations
+#[derive(thiserror::Error, Debug)]
 pub enum InstanceError {
     #[error("Configuration invalid: {0}")]
     InvalidConfiguration(String),

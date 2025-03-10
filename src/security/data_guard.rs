@@ -8,6 +8,9 @@ use tokio::sync::mpsc;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
 use tracing::{debug, error, info, warn};
+use thiserror::Error;
+
+use crate::config::DataGuardConfig;
 
 /// Configuration for the Data Guard subsystem
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -641,7 +644,7 @@ impl DataGuard {
 }
 
 /// Errors that can occur during Data Guard operations
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum DataGuardError {
     #[error("Outbound connections are disabled")]
     OutboundConnectionsDisabled,

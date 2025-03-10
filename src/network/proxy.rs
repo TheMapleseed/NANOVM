@@ -11,6 +11,7 @@ use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, instrument, trace, warn};
 use url::Url;
 use uuid::Uuid;
+use thiserror::Error;
 
 use crate::config::NetworkConfig;
 use crate::network::url_resolver::UrlResolver;
@@ -23,7 +24,7 @@ const MAX_CONCURRENT_CONNECTIONS: usize = 10_000;
 const PROXY_BUFFER_SIZE: usize = 64 * 1024;
 
 /// Proxy statistics
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ProxyStats {
     /// Total number of connections handled
     pub total_connections: u64,
@@ -103,7 +104,7 @@ pub struct ProxyConfig {
     pub health_check_interval: u64,
 }
 
-/// URL routing proxy server
+/// Proxy server for handling inbound connections
 pub struct ProxyServer {
     /// Unique identifier for this proxy server
     id: Uuid,
@@ -127,8 +128,7 @@ pub struct ProxyServer {
     shutdown_tx: mpsc::Sender<()>,
 }
 
-/// Information about an active connection
-#[derive(Debug)]
+/// Connection information
 struct ConnectionInfo {
     /// Unique identifier for this connection
     id: Uuid,
@@ -269,19 +269,7 @@ impl ProxyServer {
             url_resolver,
             tls_acceptor,
             active_connections: Arc::new(RwLock::new(HashMap::new())),
-            stats: Arc::new(RwLock::new(ProxyStats {
-                total_connections: 0,
-                active_connections: 0,
-                bytes_received: 0,
-                bytes_sent: 0,
-                routing_errors: 0,
-                connection_errors: 0,
-                tls_errors: 0,
-                timeouts: 0,
-                avg_response_time_ms: 0,
-                p95_response_time_ms: 0,
-                p99_response_time_ms: 0,
-            })),
+            stats: Arc::new(RwLock::new(ProxyStats::default())),
             shutdown_tx,
         };
         
@@ -762,7 +750,7 @@ impl ProxyServer {
 }
 
 /// Error during proxy operations
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum ProxyError {
     #[error("Failed to bind listener: {0}")]
     BindError(String),

@@ -71,7 +71,7 @@ impl ConfigValidator {
     /// Validates security configuration
     fn validate_security(&self, security: &SecurityConfig) -> Result<(), ConfigError> {
         // Validate W^X policy configuration
-        if let Some(regions) = security.wx_policy.memory_regions.as_ref() {
+        if let Some(regions) = &security.wx_policy.memory_regions {
             for region in regions {
                 if region.size_bytes == 0 {
                     return Err(ConfigError::ValidationError(
@@ -212,7 +212,7 @@ impl ConfigValidator {
     }
     
     /// Validates secrets configuration
-    fn validate_secrets(&self, secrets: &crate::config::SecretsConfig) -> Result<(), ConfigError> {
+    fn validate_secrets(&self, _secrets: &crate::config::SecretsConfig) -> Result<(), ConfigError> {
         // No specific validations needed yet
         Ok(())
     }

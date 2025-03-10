@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use thiserror::Error;
 
 use crate::config::{ConfigManager, VmConfig};
 use crate::execution::{ExecutionEngine, ExecutionPriority, ResourceLimits, SecurityContext};
@@ -891,7 +892,7 @@ impl ServiceImpl {
 }
 
 /// Error during service operations
-#[derive(Debug, thiserror::Error)]
+#[derive(Error, Debug)]
 pub enum ServiceError {
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
