@@ -1,0 +1,43 @@
+# nanovm_config.yaml
+version: "1.0"
+instance:
+  memory_limit: 512mb
+  cpu_limit: 2.0
+  timeout_seconds: 300
+  
+security:
+  data_guard:
+    enabled: true
+    outbound_whitelist:
+      - "api.example.com"
+      - "storage.example.net"
+  wx_policy:
+    strict: true
+    audit_logging: true
+    
+network:
+  urls:
+    - "https://service1.example.com"
+    - "https://service2.example.com"
+  tls:
+    enabled: true
+    min_version: "1.2"
+    cert_path: "/path/to/server.crt"
+    key_path: "/path/to/server.key"
+    enable_mtls: true
+    client_ca_path: "/path/to/client-ca.crt"
+    require_client_cert: true
+  
+scaling:
+  mirrors: 3
+  autoscale:
+    min_instances: 2
+    max_instances: 10
+    cpu_threshold: 75
+    
+secrets:
+  api_keys:
+    - name: "EXTERNAL_API_KEY"
+      value_from: "env:EXT_API_KEY"
+    - name: "DATABASE_PASSWORD"
+      value_from: "vault:secrets/db/password"
